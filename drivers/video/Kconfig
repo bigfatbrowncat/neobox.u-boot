@@ -463,6 +463,7 @@ config VIDEO_FSL_DCU_MAX_FB_SIZE_MB
 	 Controller Unit (DCU4).
 
 source "drivers/video/rockchip/Kconfig"
+source "drivers/video/drm/Kconfig"
 
 config VIDEO_SANDBOX_SDL
 	bool "Enable sandbox video console using SDL"
@@ -658,4 +659,9 @@ config VIDEO_DT_SIMPLEFB
 	  The video output is initialized by U-Boot, and kept by the
 	  kernel.
 
+config ROCKCHIP_EINK
+	bool "enable rockchip eink driver"
+	help
+	  Enable rockchip eink driver
+source "drivers/video/rk_eink/Kconfig"
 endmenu

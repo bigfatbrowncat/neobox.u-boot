@@ -10,7 +10,7 @@
 
 #ifdef CONFIG_OF_LIBFDT
 
-#include <libfdt.h>
+#include <linux/libfdt.h>
 
 u32 fdt_getprop_u32_default_node(const void *fdt, int off, int cell,
 				const char *prop, const u32 dflt);
@@ -102,6 +102,8 @@ static inline int fdt_fixup_memory_banks(void *blob, u64 start[], u64 size[],
 	return 0;
 }
 #endif
+
+int fdt_update_reserved_memory(void *blob, char *name, u64 start, u64 size);
 
 void fdt_fixup_ethernet(void *fdt);
 int fdt_find_and_setprop(void *fdt, const char *node, const char *prop,

@@ -31,6 +31,10 @@ obj-$(CONFIG_GZIP_COMPRESSED) += gzip.o
 obj-$(CONFIG_GENERATE_SMBIOS_TABLE) += smbios.o
 obj-y += initcall.o
 obj-$(CONFIG_LMB) += lmb.o
+ifdef CONFIG_LMB
+obj-$(CONFIG_SYSMEM) += sysmem.o
+obj-$(CONFIG_BIDRAM) += bidram.o
+endif
 obj-y += ldiv.o
 obj-$(CONFIG_LZ4) += lz4_wrapper.o
 obj-$(CONFIG_MD5) += md5.o
@@ -43,11 +47,23 @@ obj-$(CONFIG_TPM) += tpm.o
 obj-$(CONFIG_RBTREE)	+= rbtree.o
 obj-$(CONFIG_BITREVERSE) += bitrev.o
 obj-y += list_sort.o
+obj-$(CONFIG_OPTEE_CLIENT) += optee_clientApi/
 endif
 
-obj-$(CONFIG_RSA) += rsa/
+obj-$(CONFIG_$(SPL_TPL_)AVB_LIBAVB) += avb/libavb/
+obj-$(CONFIG_$(SPL_TPL_)AVB_LIBAVB_ATX) += avb/libavb_atx/
+obj-$(CONFIG_$(SPL_TPL_)AVB_LIBAVB_USER) += avb/libavb_user/
+obj-y += avb/rk_avb_user/
+
+obj-$(CONFIG_$(SPL_TPL_)RSA) += rsa/
 obj-$(CONFIG_SHA1) += sha1.o
 obj-$(CONFIG_SHA256) += sha256.o
+obj-$(CONFIG_SHA512) += sha512.o
+
+obj-$(CONFIG_$(SPL_)ZLIB) += zlib/
+obj-$(CONFIG_$(SPL_)GZIP) += gunzip.o
+obj-$(CONFIG_$(SPL_)LZO) += lzo/
+
 
 obj-$(CONFIG_$(SPL_)ZLIB) += zlib/
 obj-$(CONFIG_$(SPL_)GZIP) += gunzip.o
@@ -81,8 +97,10 @@ obj-y += linux_string.o
 obj-y += membuff.o
 obj-$(CONFIG_REGEX) += slre.o
 obj-y += string.o
+obj-y += stdlib.o
 obj-y += tables_csum.o
 obj-y += time.o
+obj-y += hexdump.o
 obj-$(CONFIG_TRACE) += trace.o
 obj-$(CONFIG_LIB_UUID) += uuid.o
 obj-$(CONFIG_LIB_RAND) += rand.o

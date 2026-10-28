@@ -15,6 +15,11 @@ int dev_read_u32_default(struct udevice *dev, const char *propname, int def)
 	return ofnode_read_u32_default(dev_ofnode(dev), propname, def);
 }
 
+int dev_read_s32_default(struct udevice *dev, const char *propname, int def)
+{
+	return ofnode_read_s32_default(dev_ofnode(dev), propname, def);
+}
+
 const char *dev_read_string(struct udevice *dev, const char *propname)
 {
 	return ofnode_read_string(dev_ofnode(dev), propname);
@@ -73,6 +78,9 @@ fdt_addr_t dev_read_addr_size(struct udevice *dev, const char *property,
 
 const char *dev_read_name(struct udevice *dev)
 {
+	if (!dev_of_valid(dev))
+		return NULL;
+
 	return ofnode_get_name(dev_ofnode(dev));
 }
 
@@ -102,6 +110,14 @@ int dev_read_phandle_with_args(struct udevice *dev, const char *list_name,
 					      cells_name, cell_count, index,
 					      out_args);
 }
+
+int dev_count_phandle_with_args(struct udevice *dev,
+		const char *list_name, const char *cells_name)
+{
+	return ofnode_count_phandle_with_args(dev_ofnode(dev), list_name,
+					      cells_name);
+}
+
 
 int dev_read_addr_cells(struct udevice *dev)
 {
@@ -159,7 +175,17 @@ int dev_read_alias_seq(struct udevice *dev, int *devnump)
 int dev_read_u32_array(struct udevice *dev, const char *propname,
 		       u32 *out_values, size_t sz)
 {
+	if (!dev_of_valid(dev))
+		return -EINVAL;
 	return ofnode_read_u32_array(dev_ofnode(dev), propname, out_values, sz);
+}
+
+int dev_write_u32_array(struct udevice *dev, const char *propname,
+			u32 *values, size_t sz)
+{
+	if (!dev_of_valid(dev))
+		return -EINVAL;
+	return ofnode_write_u32_array(dev_ofnode(dev), propname, values, sz);
 }
 
 const uint8_t *dev_read_u8_array_ptr(struct udevice *dev, const char *propname,
@@ -188,4 +214,9 @@ int dev_read_resource_byname(struct udevice *dev, const char *name,
 			     struct resource *res)
 {
 	return ofnode_read_resource_byname(dev_ofnode(dev), name, res);
+}
+
+u64 dev_translate_address(struct udevice *dev, const fdt32_t *in_addr)
+{
+	return ofnode_translate_address(dev_ofnode(dev), in_addr);
 }

@@ -413,6 +413,10 @@ class Config(object):
         _set_re_match = re.compile(r"{}(\w+)=(.*)".format(self.config_prefix)).match
         _unset_re_match = re.compile(r"# {}(\w+) is not set".format(self.config_prefix)).match
 
+        Returns a list or warnings (hopefully empty)
+        """
+
+        self._warnings = []
         # Put this first so that a missing file doesn't screw up our state
         filename = os.path.expandvars(filename)
         line_feeder = _FileFeed(filename)

@@ -1,1 +1,1 @@
-#include "../lib/libfdt/libfdt.h"
+#include "../scripts/dtc/libfdt/libfdt.h"

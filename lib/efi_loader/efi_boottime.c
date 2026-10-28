@@ -1507,7 +1507,7 @@ static efi_status_t EFIAPI efi_exit_boot_services(void *image_handle,
 
 	/* XXX Should persist EFI variables here */
 
-	board_quiesce_devices();
+	board_quiesce_devices(NULL);
 
 	/* Fix up caches for EFI payloads if necessary */
 	efi_exit_caches();

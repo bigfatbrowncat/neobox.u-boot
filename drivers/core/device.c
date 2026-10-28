@@ -11,12 +11,14 @@
 
 #include <common.h>
 #include <asm/io.h>
+#include <clk.h>
 #include <fdtdec.h>
 #include <fdt_support.h>
 #include <malloc.h>
 #include <dm/device.h>
 #include <dm/device-internal.h>
 #include <dm/lists.h>
+#include <dm/of_access.h>
 #include <dm/pinctrl.h>
 #include <dm/platdata.h>
 #include <dm/read.h>
@@ -48,6 +50,59 @@ static int device_bind_common(struct udevice *parent, const struct driver *drv,
 		return ret;
 	}
 
+#ifdef CONFIG_USING_KERNEL_DTB
+	if (gd->flags & GD_FLG_RELOC) {
+		/* For mmc/nand/spiflash, just update from kernel dtb instead bind again*/
+		if (drv->id == UCLASS_MMC || drv->id == UCLASS_RKNAND ||
+		    drv->id == UCLASS_SPI_FLASH || drv->id == UCLASS_MTD ||
+		    drv->id == UCLASS_PCI || drv->id == UCLASS_AHCI) {
+			/*
+			 * Reject all mmc device from kernel.
+			 *
+			 * - we always follow the rule: use mmc device from U-Boot
+			 * - avoid alias id on defferent device between U-Boot and kernel
+			 */
+			if ((gd->flags & GD_FLG_KDTB_READY) &&
+			     (drv->id == UCLASS_MMC))
+				return 0;
+
+			list_for_each_entry(dev, &uc->dev_head, uclass_node) {
+				if (!strcmp(name, dev->name)) {
+					debug("%s do not bind dev already in list %s\n",
+					      __func__, dev->name);
+					/*
+					 * There is no clearly reason for this
+					 * legacy code, but remain it here since
+					 * everything seems fine with or without
+					 * this. Maybe removed in the future.
+					 */
+					dev->node = node;
+					return 0;
+				}
+			}
+		}
+
+		/* Use other nodes from kernel dtb */
+		struct udevice *n;
+
+		list_for_each_entry_safe(dev, n, &uc->dev_head, uclass_node) {
+			if (!strcmp(name, dev->name) &&
+			    (dev_read_bool(dev, "u-boot,dm-pre-reloc") ||
+			     dev_read_bool(dev, "u-boot,dm-spl"))) {
+
+				/* Always use these node from U-Boot dtb */
+				if (drv->id == UCLASS_CRYPTO ||
+				    drv->id == UCLASS_WDT) {
+					debug("%s do not delete uboot dev: %s\n",
+					      __func__, dev->name);
+					return 0;
+				} else {
+					list_del_init(&dev->uclass_node);
+				}
+			}
+		}
+	}
+#endif
 	dev = calloc(1, sizeof(struct udevice));
 	if (!dev)
 		return -ENOMEM;
@@ -703,8 +758,12 @@ int device_set_name(struct udevice *dev, const char *name)
 bool device_is_compatible(struct udevice *dev, const char *compat)
 {
 	const void *fdt = gd->fdt_blob;
+	ofnode node = dev_ofnode(dev);
 
-	return !fdt_node_check_compatible(fdt, dev_of_offset(dev), compat);
+	if (ofnode_is_np(node))
+		return of_device_is_compatible(ofnode_to_np(node), compat, NULL, NULL);
+	else
+		return !fdt_node_check_compatible(fdt, ofnode_to_offset(node), compat);
 }
 
 bool of_machine_is_compatible(const char *compat)

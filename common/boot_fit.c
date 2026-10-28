@@ -11,7 +11,7 @@
 #include <common.h>
 #include <errno.h>
 #include <image.h>
-#include <libfdt.h>
+#include <linux/libfdt.h>
 
 static int fdt_offset(const void *fit)
 {
@@ -62,7 +62,7 @@ void *locate_dtb_in_fit(const void *fit)
 	int ret;
 
 	size = fdt_totalsize(fit);
-	size = (size + 3) & ~3;
+	size = FIT_ALIGN(size);
 
 	header = (struct image_header *)fit;
 

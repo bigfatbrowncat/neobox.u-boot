@@ -248,6 +248,10 @@ int do_ut_overlay(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
 	if (!fdt_overlay_stacked_copy)
 		goto err3;
 
+	fdt_overlay_stacked_copy = malloc(FDT_COPY_SIZE);
+	if (!fdt_overlay_stacked_copy)
+		return -ENOMEM;
+
 	/*
 	 * Resize the FDT to 4k so that we have room to operate on
 	 *
@@ -280,10 +284,12 @@ int do_ut_overlay(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
 	/* Apply the stacked overlay */
 	ut_assertok(fdt_overlay_apply(fdt_base_copy, fdt_overlay_stacked_copy));
 
+	if (argc == 1)
+		printf("Running %d environment tests\n", n_ents);
+
 	ret = cmd_ut_category("overlay", tests, n_ents, argc, argv);
 
 	free(fdt_overlay_stacked_copy);
-err3:
 	free(fdt_overlay_copy);
 err2:
 	free(fdt_base_copy);

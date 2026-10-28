@@ -11,7 +11,7 @@
 #include <errno.h>
 #include <fdtdec.h>
 #include <fdt_support.h>
-#include <libfdt.h>
+#include <linux/libfdt.h>
 #include <serial.h>
 #include <asm/sections.h>
 #include <linux/ctype.h>
@@ -71,8 +71,7 @@ static const char * const compat_names[COMPAT_COUNT] = {
 	COMPAT(ALTERA_SOCFPGA_F2SDR0, "altr,socfpga-fpga2sdram0-bridge"),
 	COMPAT(ALTERA_SOCFPGA_F2SDR1, "altr,socfpga-fpga2sdram1-bridge"),
 	COMPAT(ALTERA_SOCFPGA_F2SDR2, "altr,socfpga-fpga2sdram2-bridge"),
-	COMPAT(ALTERA_SOCFPGA_FPGA0, "altr,socfpga-a10-fpga-mgr"),
-	COMPAT(ALTERA_SOCFPGA_NOC, "altr,socfpga-a10-noc"),
+	COMPAT(ROCKCHIP_NANDC, "rockchip,rk-nandc"),
 };
 
 const char *fdtdec_get_compatible(enum fdt_compat_id id)
@@ -92,16 +91,6 @@ fdt_addr_t fdtdec_get_addr_size_fixed(const void *blob, int node,
 	fdt_addr_t addr;
 
 	debug("%s: %s: ", __func__, prop_name);
-
-	if (na > (sizeof(fdt_addr_t) / sizeof(fdt32_t))) {
-		debug("(na too large for fdt_addr_t type)\n");
-		return FDT_ADDR_T_NONE;
-	}
-
-	if (ns > (sizeof(fdt_size_t) / sizeof(fdt32_t))) {
-		debug("(ns too large for fdt_size_t type)\n");
-		return FDT_ADDR_T_NONE;
-	}
 
 	prop = fdt_getprop(blob, node, prop_name, &len);
 	if (!prop) {
@@ -197,7 +186,7 @@ fdt_addr_t fdtdec_get_addr(const void *blob, int node,
 	return fdtdec_get_addr_size(blob, node, prop_name, NULL);
 }
 
-#if defined(CONFIG_PCI) && defined(CONFIG_DM_PCI)
+#if defined(CONFIG_PCI) && CONFIG_IS_ENABLED(DM_PCI)
 int fdtdec_get_pci_addr(const void *blob, int node, enum fdt_pci_space type,
 		const char *prop_name, struct fdt_pci_addr *addr)
 {
@@ -1295,6 +1284,11 @@ int fdtdec_setup(void)
 #  else
 	/* FDT is at end of image */
 	gd->fdt_blob = (ulong *)&_end;
+
+#    ifdef CONFIG_USING_KERNEL_DTB
+	gd->fdt_blob_kern = (ulong *)((ulong)gd->fdt_blob +
+					ALIGN(fdt_totalsize(gd->fdt_blob), 8));
+#    endif
 #  endif
 # elif defined(CONFIG_OF_BOARD)
 	/* Allow the board to override the fdt address. */

@@ -69,6 +69,9 @@ void usage_printenv(void)
 		"\n"
 		" -h, --help           print this help.\n"
 		" -v, --version        display version\n"
+#ifdef CONFIG_ENV_AES
+		" -a, --aes            aes key to access environment\n"
+#endif
 #ifdef CONFIG_FILE
 		" -c, --config         configuration file, default:" CONFIG_FILE "\n"
 #endif
@@ -85,6 +88,9 @@ void usage_env_set(void)
 		"\n"
 		" -h, --help           print this help.\n"
 		" -v, --version        display version\n"
+#ifdef CONFIG_ENV_AES
+		" -a, --aes            aes key to access environment\n"
+#endif
 #ifdef CONFIG_FILE
 		" -c, --config         configuration file, default:" CONFIG_FILE "\n"
 #endif

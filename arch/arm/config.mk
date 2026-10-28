@@ -105,6 +105,12 @@ endif
 # needed for relocation
 LDFLAGS_u-boot += -pie
 
+ifndef CONFIG_SPL_SKIP_RELOCATE
+LDFLAGS_u-boot-spl = -pie
+else
+SPL_LDFLAGS_u-boot-spl =
+endif
+
 #
 # FIXME: binutils versions < 2.22 have a bug in the assembler where
 # branches to weak symbols can be incorrectly optimized in thumb mode
@@ -142,6 +148,7 @@ else
 OBJCOPYFLAGS += -j .text -j .secure_text -j .secure_data -j .rodata -j .hash \
 		-j .data -j .got -j .got.plt -j .u_boot_list -j .rel.dyn \
 		-j .binman_sym_table
+		-j .ARM.exidx -j .ARM.extab
 endif
 
 # if a dtb section exists we always have to include it

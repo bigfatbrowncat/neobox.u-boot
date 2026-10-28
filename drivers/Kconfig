@@ -18,6 +18,8 @@ source "drivers/cpu/Kconfig"
 
 source "drivers/crypto/Kconfig"
 
+source "drivers/rng/Kconfig"
+
 source "drivers/ddr/Kconfig"
 
 source "drivers/demo/Kconfig"
@@ -74,6 +76,10 @@ source "drivers/remoteproc/Kconfig"
 
 source "drivers/reset/Kconfig"
 
+source "drivers/rknand/Kconfig"
+
+source "drivers/rkflash/Kconfig"
+
 source "drivers/rtc/Kconfig"
 
 source "drivers/scsi/Kconfig"
@@ -99,6 +105,8 @@ source "drivers/usb/Kconfig"
 source "drivers/video/Kconfig"
 
 source "drivers/watchdog/Kconfig"
+
+source "drivers/irq/Kconfig"
 
 config PHYS_TO_BUS
 	bool "Custom physical to bus address mapping"

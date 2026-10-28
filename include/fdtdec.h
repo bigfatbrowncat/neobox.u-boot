@@ -14,7 +14,7 @@
  * changes to support FDT are minimized.
  */
 
-#include <libfdt.h>
+#include <linux/libfdt.h>
 #include <pci.h>
 
 /*
@@ -161,6 +161,7 @@ enum fdt_compat_id {
 	COMPAT_ALTERA_SOCFPGA_F2SDR2,           /* SoCFPGA fpga2SDRAM2 bridge */
 	COMPAT_ALTERA_SOCFPGA_FPGA0,		/* SOCFPGA FPGA manager */
 	COMPAT_ALTERA_SOCFPGA_NOC,		/* SOCFPGA Arria 10 NOC */
+	COMPAT_ROCKCHIP_NANDC,			/* Rockchip NAND controller */
 
 	COMPAT_COUNT,
 };

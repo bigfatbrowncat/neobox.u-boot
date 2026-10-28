@@ -11,7 +11,14 @@
 #include <ide.h>
 #include <malloc.h>
 #include <part.h>
+#ifdef CONFIG_SPL_AB
+#include <spl_ab.h>
+#endif
 #include <ubifs_uboot.h>
+#ifdef CONFIG_ANDROID_AB
+#include <android_avb/avb_ops_user.h>
+#include <android_avb/rk_avb_ops_user.h>
+#endif
 
 #undef	PART_DEBUG
 
@@ -21,22 +28,31 @@
 #define PRINTF(fmt,args...)
 #endif
 
-/* Check all partition types */
-#define PART_TYPE_ALL		-1
-
 DECLARE_GLOBAL_DATA_PTR;
 
 #ifdef HAVE_BLOCK_DEVICE
-static struct part_driver *part_driver_lookup_type(int part_type)
+static struct part_driver *part_driver_lookup_type(struct blk_desc *dev_desc)
 {
 	struct part_driver *drv =
 		ll_entry_start(struct part_driver, part_driver);
 	const int n_ents = ll_entry_count(struct part_driver, part_driver);
 	struct part_driver *entry;
 
-	for (entry = drv; entry != drv + n_ents; entry++) {
-		if (part_type == entry->part_type)
-			return entry;
+	if (dev_desc->part_type == PART_TYPE_UNKNOWN) {
+		for (entry = drv; entry != drv + n_ents; entry++) {
+			int ret;
+
+			ret = entry->test(dev_desc);
+			if (!ret) {
+				dev_desc->part_type = entry->part_type;
+				return entry;
+			}
+		}
+	} else {
+		for (entry = drv; entry != drv + n_ents; entry++) {
+			if (dev_desc->part_type == entry->part_type)
+				return entry;
+		}
 	}
 
 	/* Not found */
@@ -134,12 +150,16 @@ void dev_print (struct blk_desc *dev_desc)
 		break;
 	case IF_TYPE_SD:
 	case IF_TYPE_MMC:
+	case IF_TYPE_MTD:
 	case IF_TYPE_USB:
 	case IF_TYPE_NVME:
-		printf ("Vendor: %s Rev: %s Prod: %s\n",
-			dev_desc->vendor,
-			dev_desc->revision,
-			dev_desc->product);
+	case IF_TYPE_RKNAND:
+	case IF_TYPE_SPINAND:
+	case IF_TYPE_SPINOR:
+		printf("Vendor: %s Rev: %s Prod: %s\n",
+		       dev_desc->vendor,
+		       dev_desc->revision,
+		       dev_desc->product);
 		break;
 	case IF_TYPE_DOC:
 		puts("device type DOC\n");
@@ -266,11 +286,23 @@ static void print_part_header(const char *type, struct blk_desc *dev_desc)
 	case IF_TYPE_MMC:
 		puts ("MMC");
 		break;
+	case IF_TYPE_MTD:
+		puts("MTD");
+		break;
 	case IF_TYPE_HOST:
 		puts ("HOST");
 		break;
 	case IF_TYPE_NVME:
 		puts ("NVMe");
+		break;
+	case IF_TYPE_RKNAND:
+		puts("RKNAND");
+		break;
+	case IF_TYPE_SPINAND:
+		puts("SPINAND");
+		break;
+	case IF_TYPE_SPINOR:
+		puts("SPINOR");
 		break;
 	default:
 		puts ("UNKNOWN");
@@ -285,7 +317,7 @@ void part_print(struct blk_desc *dev_desc)
 {
 	struct part_driver *drv;
 
-	drv = part_driver_lookup_type(dev_desc->part_type);
+	drv = part_driver_lookup_type(dev_desc);
 	if (!drv) {
 		printf("## Unknown partition table type %x\n",
 		       dev_desc->part_type);
@@ -298,6 +330,19 @@ void part_print(struct blk_desc *dev_desc)
 		drv->print(dev_desc);
 }
 
+const char *part_get_type(struct blk_desc *dev_desc)
+{
+	struct part_driver *drv;
+
+	drv = part_driver_lookup_type(dev_desc);
+	if (!drv) {
+		printf("## Unknown partition table type %x\n",
+		       dev_desc->part_type);
+		return NULL;
+	}
+
+	return drv->name;
+}
 #endif /* HAVE_BLOCK_DEVICE */
 
 int part_get_info(struct blk_desc *dev_desc, int part,
@@ -314,7 +359,7 @@ int part_get_info(struct blk_desc *dev_desc, int part,
 	info->type_guid[0] = 0;
 #endif
 
-	drv = part_driver_lookup_type(dev_desc->part_type);
+	drv = part_driver_lookup_type(dev_desc);
 	if (!drv) {
 		debug("## Unknown partition table type %x\n",
 		      dev_desc->part_type);
@@ -629,38 +674,61 @@ cleanup:
 	return ret;
 }
 
-int part_get_info_by_name_type(struct blk_desc *dev_desc, const char *name,
-			       disk_partition_t *info, int part_type)
-{
-	struct part_driver *first_drv =
-		ll_entry_start(struct part_driver, part_driver);
-	const int n_drvs = ll_entry_count(struct part_driver, part_driver);
-	struct part_driver *part_drv;
-
-	for (part_drv = first_drv; part_drv != first_drv + n_drvs; part_drv++) {
-		int ret;
-		int i;
-		for (i = 1; i < part_drv->max_entries; i++) {
-			if (part_type >= 0 && part_type != part_drv->part_type)
-				break;
-			ret = part_drv->get_info(dev_desc, i, info);
-			if (ret != 0) {
-				/* no more entries in table */
-				break;
-			}
-			if (strcmp(name, (const char *)info->name) == 0) {
-				/* matched */
-				return i;
-			}
-		}
-	}
-	return -1;
-}
-
+/*
+ * For android A/B system, we append the current slot suffix quietly,
+ * this takes over the responsibility of slot suffix appending from
+ * developer to framework.
+ */
 int part_get_info_by_name(struct blk_desc *dev_desc, const char *name,
 			  disk_partition_t *info)
 {
-	return part_get_info_by_name_type(dev_desc, name, info, PART_TYPE_ALL);
+	struct part_driver *part_drv;
+	char name_slot[32] = {0};
+	int none_slot_try = 1;
+	int ret, i;
+
+	part_drv = part_driver_lookup_type(dev_desc);
+	if (!part_drv)
+		return -1;
+#if defined(CONFIG_ANDROID_AB) || defined(CONFIG_SPL_AB)
+	char *name_suffix = (char *)name + strlen(name) - 2;
+
+	/* Fix can not find partition with suffix "_a" & "_b". If with them, clear */
+	if (!memcmp(name_suffix, "_a", strlen("_a")) || !memcmp(name_suffix, "_b", strlen("_b")))
+		memset(name_suffix, 0, 2);
+#endif
+#if defined(CONFIG_ANDROID_AB) && !defined(CONFIG_SPL_BUILD)
+	/* 1. Query partition with A/B slot suffix */
+	if (rk_avb_append_part_slot(name, name_slot))
+		return -1;
+#elif defined(CONFIG_SPL_AB) && defined(CONFIG_SPL_BUILD)
+	if (spl_ab_append_part_slot(dev_desc, name, name_slot))
+		return -1;
+#else
+	strcpy(name_slot, name);
+#endif
+retry:
+	debug("## Query partition(%d): %s\n", none_slot_try, name_slot);
+	for (i = 1; i < part_drv->max_entries; i++) {
+		ret = part_drv->get_info(dev_desc, i, info);
+		if (ret != 0) {
+			/* no more entries in table */
+			break;
+		}
+		if (strcmp(name_slot, (const char *)info->name) == 0) {
+			/* matched */
+			return i;
+		}
+	}
+
+	/* 2. Query partition without A/B slot suffix if above failed */
+	if (none_slot_try) {
+		none_slot_try = 0;
+		strcpy(name_slot, name);
+		goto retry;
+	}
+
+	return -1;
 }
 
 void part_set_generic_name(const struct blk_desc *dev_desc,

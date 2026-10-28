@@ -4,6 +4,10 @@ menu "Partition Types"
 config PARTITIONS
 	bool "Enable Partition Labels (disklabels) support"
 	default y
+	select SPL_SPRINTF if SPL
+	select TPL_SPRINTF if TPL
+	select SPL_STRTO if SPL
+	select TPL_STRTO if TPL
 	help
 	  Partition Labels (disklabels) Supported:
 	  Zero or more of the following:
@@ -130,5 +134,15 @@ config PARTITION_TYPE_GUID
 	help
 	  Activate the configuration of GUID type
 	  for EFI partition
+
+config RKPARM_PARTITION
+	bool "Enable Rockchip parameter partition table"
+	depends on PARTITIONS
+	help
+	  Say Y here if you would like to use device under U-Boot which
+	  were partitioned using Rockchip parameter.
+
+config SPL_ROCKCHIP_PARTITION
+	bool "Enable Rockchip partition table for SPL"
 
 endmenu

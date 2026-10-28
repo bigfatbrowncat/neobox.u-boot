@@ -20,27 +20,33 @@
 #include <linux/mtd/mtd.h>
 #include <linux/mtd/flashchip.h>
 #include <linux/mtd/bbm.h>
-#include <asm/cache.h>
 
 struct mtd_info;
+struct nand_chip;
 struct nand_flash_dev;
 struct device_node;
 
+/* Get the flash and manufacturer id and lookup if the type is supported. */
+struct nand_flash_dev *nand_get_flash_type(struct mtd_info *mtd,
+					   struct nand_chip *chip,
+					   int *maf_id, int *dev_id,
+					   struct nand_flash_dev *type);
+
 /* Scan and identify a NAND device */
-int nand_scan(struct mtd_info *mtd, int max_chips);
+extern int nand_scan(struct mtd_info *mtd, int max_chips);
 /*
  * Separate phases of nand_scan(), allowing board driver to intervene
  * and override command or ECC setup according to flash type.
  */
-int nand_scan_ident(struct mtd_info *mtd, int max_chips,
+extern int nand_scan_ident(struct mtd_info *mtd, int max_chips,
 			   struct nand_flash_dev *table);
-int nand_scan_tail(struct mtd_info *mtd);
+extern int nand_scan_tail(struct mtd_info *mtd);
 
 /* Free resources held by the NAND device */
-void nand_release(struct mtd_info *mtd);
+extern void nand_release(struct mtd_info *mtd);
 
 /* Internal helper for board drivers which need to override command function */
-void nand_wait_ready(struct mtd_info *mtd);
+extern void nand_wait_ready(struct mtd_info *mtd);
 
 /*
  * This constant declares the max. oobsize / page, which
@@ -247,9 +253,6 @@ typedef enum {
 #define NAND_CI_CHIPNR_MSK	0x03
 #define NAND_CI_CELLTYPE_MSK	0x0C
 #define NAND_CI_CELLTYPE_SHIFT	2
-
-/* Keep gcc happy */
-struct nand_chip;
 
 /* ONFI features */
 #define ONFI_FEATURE_16_BIT_BUS		(1 << 0)
@@ -512,20 +515,6 @@ struct nand_ecc_caps {
 	int nstepinfos;
 	int (*calc_ecc_bytes)(int step_size, int strength);
 };
-
-/* a shorthand to generate struct nand_ecc_caps with only one ECC stepsize */
-#define NAND_ECC_CAPS_SINGLE(__name, __calc, __step, ...)	\
-static const int __name##_strengths[] = { __VA_ARGS__ };	\
-static const struct nand_ecc_step_info __name##_stepinfo = {	\
-	.stepsize = __step,					\
-	.strengths = __name##_strengths,			\
-	.nstrengths = ARRAY_SIZE(__name##_strengths),		\
-};								\
-static const struct nand_ecc_caps __name = {			\
-	.stepinfos = &__name##_stepinfo,			\
-	.nstepinfos = 1,					\
-	.calc_ecc_bytes = __calc,				\
-}
 
 /**
  * struct nand_ecc_ctrl - Control structure for ECC
@@ -923,7 +912,9 @@ struct nand_chip {
 
 	int onfi_version;
 	int jedec_version;
+#ifdef CONFIG_SYS_NAND_ONFI_DETECTION
 	struct nand_onfi_params	onfi_params;
+#endif
 	struct nand_jedec_params jedec_params;
  
 	struct nand_data_interface *data_interface;
@@ -1083,13 +1074,13 @@ struct nand_manufacturers {
 extern struct nand_flash_dev nand_flash_ids[];
 extern struct nand_manufacturers nand_manuf_ids[];
 
-int nand_default_bbt(struct mtd_info *mtd);
-int nand_markbad_bbt(struct mtd_info *mtd, loff_t offs);
-int nand_isreserved_bbt(struct mtd_info *mtd, loff_t offs);
-int nand_isbad_bbt(struct mtd_info *mtd, loff_t offs, int allowbbt);
-int nand_erase_nand(struct mtd_info *mtd, struct erase_info *instr,
+extern int nand_default_bbt(struct mtd_info *mtd);
+extern int nand_markbad_bbt(struct mtd_info *mtd, loff_t offs);
+extern int nand_isreserved_bbt(struct mtd_info *mtd, loff_t offs);
+extern int nand_isbad_bbt(struct mtd_info *mtd, loff_t offs, int allowbbt);
+extern int nand_erase_nand(struct mtd_info *mtd, struct erase_info *instr,
 			   int allowbbt);
-int nand_do_read(struct mtd_info *mtd, loff_t from, size_t len,
+extern int nand_do_read(struct mtd_info *mtd, loff_t from, size_t len,
 			size_t *retlen, uint8_t *buf);
 
 /*
@@ -1184,21 +1175,6 @@ static inline int onfi_get_sync_timing_mode(struct nand_chip *chip)
 		return ONFI_TIMING_MODE_UNKNOWN;
 	return le16_to_cpu(chip->onfi_params.src_sync_timing_mode);
 }
-#else
-static inline int onfi_feature(struct nand_chip *chip)
-{
-	return 0;
-}
-
-static inline int onfi_get_async_timing_mode(struct nand_chip *chip)
-{
-	return ONFI_TIMING_MODE_UNKNOWN;
-}
-
-static inline int onfi_get_sync_timing_mode(struct nand_chip *chip)
-{
-	return ONFI_TIMING_MODE_UNKNOWN;
-}
 #endif
 
 int onfi_init_data_interface(struct nand_chip *chip,
@@ -1269,4 +1245,34 @@ int nand_maximize_ecc(struct nand_chip *chip,
 
 /* Reset and initialize a NAND device */
 int nand_reset(struct nand_chip *chip, int chipnr);
+
+/* NAND operation helpers */
+int nand_reset_op(struct nand_chip *chip);
+int nand_readid_op(struct nand_chip *chip, u8 addr, void *buf,
+		   unsigned int len);
+int nand_status_op(struct nand_chip *chip, u8 *status);
+int nand_exit_status_op(struct nand_chip *chip);
+int nand_erase_op(struct nand_chip *chip, unsigned int eraseblock);
+int nand_read_page_op(struct nand_chip *chip, unsigned int page,
+		      unsigned int offset_in_page, void *buf, unsigned int len);
+int nand_change_read_column_op(struct nand_chip *chip,
+			       unsigned int offset_in_page, void *buf,
+			       unsigned int len, bool force_8bit);
+int nand_read_oob_op(struct nand_chip *chip, unsigned int page,
+		     unsigned int offset_in_page, void *buf, unsigned int len);
+int nand_prog_page_begin_op(struct nand_chip *chip, unsigned int page,
+			    unsigned int offset_in_page, const void *buf,
+			    unsigned int len);
+int nand_prog_page_end_op(struct nand_chip *chip);
+int nand_prog_page_op(struct nand_chip *chip, unsigned int page,
+		      unsigned int offset_in_page, const void *buf,
+		      unsigned int len);
+int nand_change_write_column_op(struct nand_chip *chip,
+				unsigned int offset_in_page, const void *buf,
+				unsigned int len, bool force_8bit);
+int nand_read_data_op(struct nand_chip *chip, void *buf, unsigned int len,
+		      bool force_8bit);
+int nand_write_data_op(struct nand_chip *chip, const void *buf,
+		       unsigned int len, bool force_8bit);
+
 #endif /* __LINUX_MTD_RAWNAND_H */

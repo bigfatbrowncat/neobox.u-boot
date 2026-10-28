@@ -30,6 +30,14 @@ config SYS_PROMPT
 	  This string is displayed in the command line to the left of the
 	  cursor.
 
+config U_BOOT_CMD_ALWAYS
+	bool "Enable cmd with U_BOOT_CMD_ALWAYS() declared"
+	depends on !CMDLINE
+	help
+	  This function is used to support some special U-Boot commands with
+	  U_BOOT_CMD_ALWAYS() declared even when CONFIG_CMDLINE is disabled.
+	  It reduces the image size and works with simple CLI.
+
 menu "Autoboot options"
 
 config AUTOBOOT
@@ -232,6 +240,15 @@ config CMD_BOOTMENU
 	select MENU
 	help
 	  Add an ANSI terminal boot menu command.
+
+config CMD_DTIMG
+	bool "dtimg"
+	select OF_LIBFDT_OVERLAY
+	help
+	  Android DTB/DTBO image manipulation commands. Read dtb/dtbo files from
+	  image into RAM, dump image structure information, etc. Those dtb/dtbo
+	  files should be merged in one dtb further, which needs to be passed to
+	  the kernel, as part of a boot process.
 
 config CMD_ELF
 	bool "bootelf, bootvx"
@@ -524,6 +541,22 @@ config CMD_STRINGS
 	  within the range are displayed. The minimum number of characters
 	  for a sequence to be considered a string can be provided.
 
+config CMD_CRYPTO
+	bool "crypto test"
+	depends on DM_CRYPTO
+	select SHA1
+	select SHA256
+	select SHA512
+	select MD5
+	help
+	  Crypto test.
+
+config CMD_CRYPTO_SUM
+	bool "crypto checksum engine"
+	depends on DM_CRYPTO
+	default y
+	help
+	  Crypto checksum engine for sha1/sha256/sha512/md5.
 endmenu
 
 menu "Compression commands"
@@ -756,10 +789,74 @@ config CMD_LOADS
 	help
 	  Load an S-Record file over serial line
 
+config CMD_LOAD_ANDROID
+	bool "load_android"
+	default n
+	depends on ANDROID_BOOT_IMAGE
+	help
+	  Load an Android Boot image from storage. The Android Boot images
+	  define the size and kernel address on the header, which are used by
+	  this command.
+
+config CMD_BOOT_ANDROID
+	bool "boot_android"
+	default n
+	depends on ANDROID_BOOTLOADER
+	help
+	  Performs the Android Bootloader boot flow, loading the appropriate
+	  Android image (normal kernel, recovery kernel or "bootloader" mode)
+	  and booting it. The boot mode is determined by the contents of the
+	  Android Bootloader Message.
+
+config CMD_ANDROID_AB_SELECT
+	bool "android_ab_select"
+	default n
+	depends on ANDROID_AB
+	help
+	  On Android devices with more than one boot slot (multiple copies of
+	  the kernel and system images) this provides a command to select which
+	  slot should be used to boot from and register the boot attempt. This
+	  is used by the new A/B update model where one slot is updated in the
+	  background while running from the other slot.
+
+config CMD_BOOT_FIT
+	bool "boot_fit"
+	default n
+	depends on ROCKCHIP_FIT_IMAGE
+	help
+	  Performs the FIT boot flow, loading the appropriate FIT image from
+	  boot/recovery partition containing kernel/fdt/ramdisk images.
+	  Additional that, the IH_TYPE_MULTI can be used for resource file.
+
+config CMD_BOOT_UIMAGE
+	bool "boot_uimage"
+	default n
+	depends on ROCKCHIP_UIMAGE
+	help
+	  Performs the Legacy uImage boot flow, loading the appropriate uImage
+	  file from resource/kernel/boot(recovery) partitions. Additional that,
+	  the resource partition can be fdt or resource(recommand) uImage file.
+
+config CMD_BOOT_ROCKCHIP
+	bool "boot_rockchip"
+	default n
+	depends on RKIMG_BOOTLOADER
+	help
+	  Performs the Rockchip Bootloader boot flow, loading the appropriate
+	  Rockchip image (normal kernel, boot, resource and revocery)
+	  and booting it. The boot mode is determined by the contents of the
+	  Rockchip bootloader helper.
+
 config CMD_MMC
 	bool "mmc"
 	help
 	  MMC memory mapped support.
+
+config CMD_MTD
+	bool "mtd"
+	select MTD_PARTITIONS
+	help
+	  MTD commands support.
 
 config CMD_NAND
 	bool "nand"
@@ -843,6 +940,33 @@ config CMD_REMOTEPROC
 	depends on REMOTEPROC
 	help
 	  Support for Remote Processor control
+
+config CMD_ROCKUSB
+	bool "rockusb - Command to upgrade Rockchip device"
+	depends on USB_GADGET
+	help
+	  Rockusb command provides a way to upgrade firmware for
+	  Rockchip SoC based devices, its design make use of USB
+	  Bulk-Only Transport based on UMS framework.
+
+config CMD_RKNAND
+	bool "rknand"
+	depends on (RKNAND || RKNANDC_NAND)
+	default y if (RKNAND || RKNANDC_NAND)
+	help
+	    Rockchip NAND FLASH device support
+
+config CMD_RKSFC
+	bool "rksfc"
+	depends on (RKSFC_NOR || RKSFC_NAND)
+	default y if (RKSFC_NOR || RKSFC_NAND)
+	help
+	  Rockchip SFC device support
+
+config CMD_RK_SECURE_STORAGE
+	bool "dump rockchip efuse/otp content"
+	help
+	  Dump the data which is written in OTP or efuse.
 
 config CMD_SATA
 	bool "sata - Access SATA subsystem"
@@ -970,6 +1094,16 @@ config CMD_TFTPPUT
 	help
 	  TFTP put command, for uploading files to a server
 
+config CMD_TFTP_BOOTM
+	bool "tftp download and bootm"
+	help
+	  TFTP bootm command, download and bootm the aosp/uImage/FIT Image.
+
+config CMD_TFTP_FLASH
+	bool "tftp download and flash"
+	help
+	  TFTP flash command, download and flash the Image to partition.
+
 config CMD_TFTPSRV
 	bool "tftpsrv"
 	help
@@ -1036,6 +1170,16 @@ config CMD_ETHSW
 	  viewing/maintaining the filtering database (FDB)
 
 endmenu
+
+config CMD_MEMTESTER
+	bool "Enable memtester for ddr"
+	help
+	  This enables memtester for ddr.
+
+config CMD_DDR_TEST_TOOL
+	bool "Enable ddr test tool"
+	help
+	  This enable ddr test tool code.
 
 menu "Misc commands"
 
@@ -1122,6 +1266,13 @@ config CMD_GETTIME
 	  U-Boot started running. This shows the time in seconds and
 	  milliseconds. See also the 'bootstage' command which provides more
 	  flexibility for boot timing.
+
+config CMD_RNG
+	bool "rng command"
+	depends on DM_RNG
+	select HEXDUMP
+	help
+	  Print bytes from the hardware random number generator.
 
 # TODO: rename to CMD_SLEEP
 config CMD_MISC
@@ -1216,6 +1367,23 @@ config CMD_REGULATOR
 	  The '-f' (force) option can be used for set the value which exceeds
 	  the limits, which are found in device-tree and are kept in regulator's
 	  uclass platdata structure.
+
+config CMD_CHARGE_DISPLAY
+	bool "Enable Driver Model Charge Display command"
+	depends on DM_CHARGE_DISPLAY
+	default y
+	help
+	  Support U-Boot charge display.
+
+config CMD_DVFS
+	bool "Enable Driver Model DVFS command"
+	depends on DM_DVFS
+	default y
+	help
+	  Support dvfs policy apply API
+	  User interface features:
+	  - dvfs            - apply dvfs policy once
+	  - dvfs repeat     - repeat apply dvfs policy until achieve the target temperature
 
 endmenu
 
@@ -1399,19 +1567,30 @@ config CMD_JFFS2
 
 config CMD_MTDPARTS
 	bool "MTD partition support"
+	select MTD_DEVICE if (CMD_NAND || NAND)
 	help
 	  MTD partition support
 
+config CMD_MTD
+	bool "MTD support"
+	help
+	  MTD support
+
+config CMD_MTD_BLK
+	bool "MTD block support"
+	help
+	  MTD block support
+
 config MTDIDS_DEFAULT
 	string "Default MTD IDs"
-	depends on CMD_MTDPARTS || CMD_NAND || CMD_FLASH
+	depends on CMD_MTD || CMD_MTDPARTS || CMD_NAND || CMD_FLASH
 	help
 	  Defines a default MTD IDs list for use with MTD partitions in the
 	  Linux MTD command line partitions format.
 
 config MTDPARTS_DEFAULT
 	string "Default MTD partition scheme"
-	depends on CMD_MTDPARTS || CMD_NAND || CMD_FLASH
+	depends on CMD_MTD || CMD_MTDPARTS || CMD_NAND || CMD_FLASH
 	help
 	  Defines a default MTD partitioning scheme in the Linux MTD command
 	  line partitions format

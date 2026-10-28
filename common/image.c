@@ -22,7 +22,7 @@
 #include <mapmem.h>
 
 #if IMAGE_ENABLE_FIT || IMAGE_ENABLE_OF_LIBFDT
-#include <libfdt.h>
+#include <linux/libfdt.h>
 #include <fdt_support.h>
 #include <fpga.h>
 #include <xilinx.h>
@@ -86,11 +86,13 @@ static const table_entry_t uimage_arch[] = {
 	{	IH_ARCH_ARC,		"arc",		"ARC",		},
 	{	IH_ARCH_X86_64,		"x86_64",	"AMD x86_64",	},
 	{	IH_ARCH_XTENSA,		"xtensa",	"Xtensa",	},
+	{	IH_ARCH_RISCV,		"riscv",	"RISC-V",	},
 	{	-1,			"",		"",		},
 };
 
 static const table_entry_t uimage_os[] = {
 	{	IH_OS_INVALID,	"invalid",	"Invalid OS",		},
+	{       IH_OS_OP_TEE, "op-tee", "OP-TEE"  },
 	{       IH_OS_ARM_TRUSTED_FIRMWARE, "arm-trusted-firmware", "ARM Trusted Firmware"  },
 	{	IH_OS_LINUX,	"linux",	"Linux",		},
 #if defined(CONFIG_LYNXKDI) || defined(USE_HOSTCC)
@@ -161,6 +163,7 @@ static const table_entry_t uimage_type[] = {
 	{       IH_TYPE_TEE,        "tee",        "Trusted Execution Environment Image",},
 	{	IH_TYPE_FIRMWARE_IVT, "firmware_ivt", "Firmware with HABv4 IVT" },
 	{       IH_TYPE_PMMC,        "pmmc",        "TI Power Management Micro-Controller Firmware",},
+	{	IH_TYPE_RKNAND,     "rknand",     "Rockchip NAND Boot Image" },
 	{	-1,		    "",		  "",			},
 };
 
@@ -190,6 +193,26 @@ static const struct table_info table_info[IH_COUNT] = {
 /*****************************************************************************/
 /* Legacy format routines */
 /*****************************************************************************/
+#ifndef USE_HOSTCC
+#ifndef CONFIG_SPL_BUILD
+uint32_t image_get_load(const image_header_t *hdr)
+{
+	uint32_t load = uimage_to_cpu(hdr->ih_load);
+
+	return (load == IMAGE_PARAM_INVAL) ?
+		env_get_ulong("kernel_addr_r", 16, 0) : load;
+}
+
+uint32_t image_get_ep(const image_header_t *hdr)
+{
+	uint32_t ep = uimage_to_cpu(hdr->ih_ep);
+
+	return (ep == IMAGE_PARAM_INVAL) ?
+		env_get_ulong("kernel_addr_r", 16, 0) : ep;
+}
+#endif
+#endif
+
 int image_check_hcrc(const image_header_t *hdr)
 {
 	ulong hcrc;
@@ -237,7 +260,7 @@ ulong image_multi_count(const image_header_t *hdr)
 	size = (uint32_t *)image_get_data(hdr);
 
 	/* count non empty slots */
-	for (i = 0; size[i]; ++i)
+	for (i = 0; size[i] != IMAGE_PARAM_INVAL; ++i)
 		count++;
 
 	return count;
@@ -1160,6 +1183,9 @@ int boot_ramdisk_high(struct lmb *lmb, ulong rd_data, ulong rd_len,
 			*initrd_end = rd_data + rd_len;
 			lmb_reserve(lmb, rd_data, rd_len);
 		} else {
+			if (initrd_high && env_get_yesno("bootm-reloc-at"))
+				initrd_high += rd_len;
+
 			if (initrd_high)
 				*initrd_start = (ulong)lmb_alloc_base(lmb,
 						rd_len, 0x1000, initrd_high);

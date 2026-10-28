@@ -10,7 +10,7 @@
 #include <syscon.h>
 #include <asm/arch/clock.h>
 #include <asm/arch/grf_rk3128.h>
-#include <asm/arch/sdram_common.h>
+#include <asm/arch/sdram.h>
 
 DECLARE_GLOBAL_DATA_PTR;
 struct dram_info {
@@ -43,6 +43,7 @@ static int rk3128_dmc_get_info(struct udevice *dev, struct ram_info *info)
 static struct ram_ops rk3128_dmc_ops = {
 	.get_info = rk3128_dmc_get_info,
 };
+
 
 static const struct udevice_id rk3128_dmc_ids[] = {
 	{ .compatible = "rockchip,rk3128-dmc" },

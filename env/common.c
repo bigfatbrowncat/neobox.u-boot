@@ -41,6 +41,8 @@ int env_get_yesno(const char *var)
 		1 : 0;
 }
 
+__weak void board_env_fixup(void) {}
+
 /*
  * Look up the variable from the default environment
  */
@@ -88,6 +90,8 @@ void set_default_env(const char *s)
 
 	gd->flags |= GD_FLG_ENV_READY;
 	gd->flags |= GD_FLG_ENV_DEFAULT;
+
+	board_env_fixup();
 }
 
 
@@ -103,6 +107,68 @@ int set_default_vars(int nvars, char * const vars[])
 				H_NOCLEAR | H_INTERACTIVE, 0, nvars, vars);
 }
 
+int set_board_env(const char *vars, int size, int flags, bool ready)
+{
+	if (himport_r(&env_htab, (char *)vars, size, '\0',
+		      flags, 0, 0, NULL) == 0) {
+		pr_err("Environment import failed\n");
+		return -1;
+	}
+
+	if (ready) {
+		gd->flags |= GD_FLG_ENV_READY;
+		gd->flags |= GD_FLG_ENV_DEFAULT;
+	}
+
+	return 0;
+}
+
+#ifdef CONFIG_ENV_AES
+#include <uboot_aes.h>
+/**
+ * env_aes_cbc_get_key() - Get AES-128-CBC key for the environment
+ *
+ * This function shall return 16-byte array containing AES-128 key used
+ * to encrypt and decrypt the environment. This function must be overridden
+ * by the implementer as otherwise the environment encryption will not
+ * work.
+ */
+__weak uint8_t *env_aes_cbc_get_key(void)
+{
+	return NULL;
+}
+
+static int env_aes_cbc_crypt(env_t *env, const int enc)
+{
+	unsigned char *data = env->data;
+	uint8_t *key;
+	uint8_t key_exp[AES_EXPAND_KEY_LENGTH];
+	uint32_t aes_blocks;
+
+	key = env_aes_cbc_get_key();
+	if (!key)
+		return -EINVAL;
+
+	/* First we expand the key. */
+	aes_expand_key(key, key_exp);
+
+	/* Calculate the number of AES blocks to encrypt. */
+	aes_blocks = ENV_SIZE / AES_KEY_LENGTH;
+
+	if (enc)
+		aes_cbc_encrypt_blocks(key_exp, data, data, aes_blocks);
+	else
+		aes_cbc_decrypt_blocks(key_exp, data, data, aes_blocks);
+
+	return 0;
+}
+#else
+static inline int env_aes_cbc_crypt(env_t *env, const int enc)
+{
+	return 0;
+}
+#endif
+
 /*
  * Check if CRC is valid and (if yes) import the environment.
  * Note that "buf" may or may not be aligned.
@@ -110,6 +176,7 @@ int set_default_vars(int nvars, char * const vars[])
 int env_import(const char *buf, int check)
 {
 	env_t *ep = (env_t *)buf;
+	int ret;
 
 	if (check) {
 		uint32_t crc;
@@ -120,6 +187,14 @@ int env_import(const char *buf, int check)
 			set_default_env("!bad CRC");
 			return 0;
 		}
+	}
+
+	/* Decrypt the env if desired. */
+	ret = env_aes_cbc_crypt(ep, 0);
+	if (ret) {
+		pr_err("Failed to decrypt env!\n");
+		set_default_env("!import failed");
+		return ret;
 	}
 
 	if (himport_r(&env_htab, (char *)ep->data, ENV_SIZE, '\0', 0, 0,

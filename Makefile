@@ -593,6 +593,11 @@ endif
 
 KBUILD_CFLAGS += $(call cc-option,-fno-stack-protector)
 KBUILD_CFLAGS += $(call cc-option,-fno-delete-null-pointer-checks)
+KBUILD_CFLAGS  += $(call cc-disable-warning, address-of-packed-member)
+KBUILD_CFLAGS   += $(call cc-disable-warning, dangling-pointer)
+KBUILD_CFLAGS   += $(call cc-disable-warning, address)
+KBUILD_CFLAGS   += $(call cc-disable-warning, enum-int-mismatch)
+KBUILD_CFLAGS   += $(call cc-disable-warning, maybe-uninitialized)
 
 KBUILD_CFLAGS	+= -g
 # $(KBUILD_AFLAGS) sets -g, which causes gcc to pass a suitable -g<format>
@@ -654,11 +659,12 @@ libs-y += fs/
 libs-y += net/
 libs-y += disk/
 libs-y += drivers/
+libs-y += drivers/cpu/
 libs-y += drivers/dma/
 libs-y += drivers/gpio/
 libs-y += drivers/i2c/
 libs-y += drivers/mtd/
-libs-$(CONFIG_CMD_NAND) += drivers/mtd/nand/
+libs-$(CONFIG_CMD_NAND) += drivers/mtd/nand/raw/
 libs-y += drivers/mtd/onenand/
 libs-$(CONFIG_CMD_UBI) += drivers/mtd/ubi/
 libs-y += drivers/mtd/spi/
@@ -671,13 +677,17 @@ libs-y += drivers/power/ \
 	drivers/power/mfd/ \
 	drivers/power/pmic/ \
 	drivers/power/battery/ \
-	drivers/power/regulator/
+	drivers/power/regulator/ \
+	drivers/power/dvfs/ \
+	drivers/power/io-domain/ \
+	drivers/power/charge/
 libs-y += drivers/spi/
 libs-$(CONFIG_FMAN_ENET) += drivers/net/fm/
 libs-$(CONFIG_SYS_FSL_DDR) += drivers/ddr/fsl/
 libs-$(CONFIG_SYS_FSL_MMDC) += drivers/ddr/fsl/
 libs-$(CONFIG_ALTERA_SDRAM) += drivers/ddr/altera/
 libs-y += drivers/serial/
+libs-y += drivers/usb/cdns3/
 libs-y += drivers/usb/dwc3/
 libs-y += drivers/usb/common/
 libs-y += drivers/usb/emul/
@@ -766,6 +776,7 @@ endif
 
 # Always append ALL so that arch config.mk's can add custom ones
 ALL-y += u-boot.srec u-boot.bin u-boot.sym System.map binary_size_check
+ALL-$(CONFIG_SUPPORT_USBPLUG) += usbplug.bin
 
 ALL-$(CONFIG_ONENAND_U_BOOT) += u-boot-onenand.bin
 ifeq ($(CONFIG_SPL_FSL_PBL),y)
@@ -878,6 +889,9 @@ dts/dt.dtb: u-boot
 quiet_cmd_copy = COPY    $@
       cmd_copy = cp $< $@
 
+quiet_cmd_truncate = ALIGN   $@
+      cmd_truncate = truncate -s "%8" $@
+
 ifeq ($(CONFIG_MULTI_DTB_FIT),y)
 
 fit-dtb.blob: dts/dt.dtb FORCE
@@ -893,13 +907,30 @@ u-boot-fit-dtb.bin: u-boot-nodtb.bin fit-dtb.blob
 u-boot.bin: u-boot-fit-dtb.bin FORCE
 	$(call if_changed,copy)
 else ifeq ($(CONFIG_OF_SEPARATE),y)
+
 u-boot-dtb.bin: u-boot-nodtb.bin dts/dt.dtb FORCE
 	$(call if_changed,cat)
 
+EMBED_KERN_DTB := $(CONFIG_EMBED_KERNEL_DTB_PATH:"%"=%)
+ifneq ($(wildcard $(EMBED_KERN_DTB)),)
+u-boot-dtb-kern.bin: u-boot-dtb.bin FORCE
+	$(call if_changed,copy)
+	$(call if_changed,truncate)
+u-boot.bin: u-boot-dtb-kern.bin $(EMBED_KERN_DTB) FORCE
+	$(call if_changed,cat)
+else
 u-boot.bin: u-boot-dtb.bin FORCE
 	$(call if_changed,copy)
+	$(call if_changed,truncate)
+endif
+
 else
 u-boot.bin: u-boot-nodtb.bin FORCE
+	$(call if_changed,copy)
+endif
+
+ifeq ($(CONFIG_SUPPORT_USBPLUG),y)
+usbplug.bin: u-boot.bin
 	$(call if_changed,copy)
 endif
 
@@ -912,7 +943,7 @@ endif
 quiet_cmd_copy = COPY    $@
       cmd_copy = cp $< $@
 
-u-boot.dtb: dts/dt.dtb
+u-boot.dtb: dts/dt.dtb FORCE
 	$(call cmd,copy)
 
 OBJCOPYFLAGS_u-boot.hex := -O ihex
@@ -1342,12 +1373,21 @@ prepare: prepare0
 # Generate some files
 # ---------------------------------------------------------------------------
 
+ifeq ($(CONFIG_SUPPORT_USBPLUG),)
 define filechk_version.h
 	(echo \#define PLAIN_VERSION \"$(UBOOTRELEASE)\"; \
 	echo \#define U_BOOT_VERSION \"U-Boot \" PLAIN_VERSION; \
 	echo \#define CC_VERSION_STRING \"$$(LC_ALL=C $(CC) --version | head -n 1)\"; \
 	echo \#define LD_VERSION_STRING \"$$(LC_ALL=C $(LD) --version | head -n 1)\"; )
 endef
+else
+define filechk_version.h
+        (echo \#define PLAIN_VERSION \"$(UBOOTRELEASE)\"; \
+        echo \#define U_BOOT_VERSION \"USB-PLUG \" PLAIN_VERSION; \
+        echo \#define CC_VERSION_STRING \"$$(LC_ALL=C $(CC) --version | head -n 1)\"; \
+        echo \#define LD_VERSION_STRING \"$$(LC_ALL=C $(LD) --version | head -n 1)\"; )
+endef
+endif
 
 # The SOURCE_DATE_EPOCH mechanism requires a date that behaves like GNU date.
 # The BSD date on the other hand behaves different and would produce errors
@@ -1485,7 +1525,7 @@ CLEAN_DIRS  += $(MODVERDIR) \
 			$(filter-out include, $(shell ls -1 $d 2>/dev/null))))
 
 CLEAN_FILES += include/bmp_logo.h include/bmp_logo_data.h \
-	       boot* u-boot* MLO* SPL System.map fit-dtb.blob
+	       boot* u-boot* MLO* SPL System.map fit-dtb.blob *.bin *.img
 
 # Directories & files removed with 'make mrproper'
 MRPROPER_DIRS  += include/config include/generated spl tpl \

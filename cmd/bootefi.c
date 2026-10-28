@@ -6,15 +6,13 @@
  *  SPDX-License-Identifier:     GPL-2.0+
  */
 
-#include <charset.h>
 #include <common.h>
 #include <command.h>
 #include <dm.h>
 #include <efi_loader.h>
-#include <efi_selftest.h>
 #include <errno.h>
-#include <libfdt.h>
-#include <libfdt_env.h>
+#include <linux/libfdt.h>
+#include <linux/libfdt_env.h>
 #include <memalign.h>
 #include <asm/global_data.h>
 #include <asm-generic/sections.h>
@@ -45,37 +43,10 @@ static void efi_init_obj_list(void)
 #ifdef CONFIG_GENERATE_SMBIOS_TABLE
 	efi_smbios_register();
 #endif
-	efi_watchdog_register();
 
 	/* Initialize EFI runtime services */
 	efi_reset_system_init();
 	efi_get_time_init();
-}
-
-/*
- * Set the load options of an image from an environment variable.
- *
- * @loaded_image_info:	the image
- * @env_var:		name of the environment variable
- */
-static void set_load_options(struct efi_loaded_image *loaded_image_info,
-			     const char *env_var)
-{
-	size_t size;
-	const char *env = env_get(env_var);
-
-	loaded_image_info->load_options = NULL;
-	loaded_image_info->load_options_size = 0;
-	if (!env)
-		return;
-	size = strlen(env) + 1;
-	loaded_image_info->load_options = calloc(size, sizeof(u16));
-	if (!loaded_image_info->load_options) {
-		printf("ERROR: Out of memory\n");
-		return;
-	}
-	utf8_to_utf16(loaded_image_info->load_options, (u8 *)env, size);
-	loaded_image_info->load_options_size = size * 2;
 }
 
 static void *copy_fdt(void *fdt)
@@ -121,10 +92,10 @@ static void *copy_fdt(void *fdt)
 	return new_fdt;
 }
 
-static efi_status_t efi_do_enter(
-			void *image_handle, struct efi_system_table *st,
-			asmlinkage ulong (*entry)(void *image_handle,
-						  struct efi_system_table *st))
+static ulong efi_do_enter(void *image_handle,
+			  struct efi_system_table *st,
+			  asmlinkage ulong (*entry)(void *image_handle,
+				struct efi_system_table *st))
 {
 	efi_status_t ret = EFI_LOAD_ERROR;
 
@@ -135,7 +106,7 @@ static efi_status_t efi_do_enter(
 }
 
 #ifdef CONFIG_ARM64
-static efi_status_t efi_run_in_el2(asmlinkage ulong (*entry)(
+static unsigned long efi_run_in_el2(asmlinkage ulong (*entry)(
 			void *image_handle, struct efi_system_table *st),
 			void *image_handle, struct efi_system_table *st)
 {
@@ -150,13 +121,12 @@ static efi_status_t efi_run_in_el2(asmlinkage ulong (*entry)(
  * Load an EFI payload into a newly allocated piece of memory, register all
  * EFI objects it would want to access and jump to it.
  */
-static efi_status_t do_bootefi_exec(void *efi, void *fdt,
-				    struct efi_device_path *device_path,
-				    struct efi_device_path *image_path)
+static unsigned long do_bootefi_exec(void *efi, void *fdt,
+				     struct efi_device_path *device_path,
+				     struct efi_device_path *image_path)
 {
 	struct efi_loaded_image loaded_image_info = {};
 	struct efi_object loaded_image_info_obj = {};
-	struct efi_device_path *memdp = NULL;
 	ulong ret;
 
 	ulong (*entry)(void *image_handle, struct efi_system_table *st)
@@ -164,20 +134,6 @@ static efi_status_t do_bootefi_exec(void *efi, void *fdt,
 	ulong fdt_pages, fdt_size, fdt_start, fdt_end;
 	const efi_guid_t fdt_guid = EFI_FDT_GUID;
 	bootm_headers_t img = { 0 };
-
-	/*
-	 * Special case for efi payload not loaded from disk, such as
-	 * 'bootefi hello' or for example payload loaded directly into
-	 * memory via jtag/etc:
-	 */
-	if (!device_path && !image_path) {
-		printf("WARNING: using memory device/image path, this may confuse some payloads!\n");
-		/* actual addresses filled in after efi_load_pe() */
-		memdp = efi_dp_from_mem(0, 0, 0);
-		device_path = image_path = memdp;
-	} else {
-		assert(device_path && image_path);
-	}
 
 	/* Initialize and populate EFI object list */
 	if (!efi_obj_list_initalized)
@@ -218,8 +174,6 @@ static efi_status_t do_bootefi_exec(void *efi, void *fdt,
 		efi_install_configuration_table(&fdt_guid, NULL);
 	}
 
-	/* Transfer environment variable bootargs as load options */
-	set_load_options(&loaded_image_info, "bootargs");
 	/* Load the EFI payload */
 	entry = efi_load_pe(efi, &loaded_image_info);
 	if (!entry) {
@@ -227,23 +181,12 @@ static efi_status_t do_bootefi_exec(void *efi, void *fdt,
 		goto exit;
 	}
 
-	if (memdp) {
-		struct efi_device_path_memory *mdp = (void *)memdp;
-		mdp->memory_type = loaded_image_info.image_code_type;
-		mdp->start_address = (uintptr_t)loaded_image_info.image_base;
-		mdp->end_address = mdp->start_address +
-				loaded_image_info.image_size;
-	}
-
-	/* we don't support much: */
-	env_set("efi_8be4df61-93ca-11d2-aa0d-00e098032b8c_OsIndicationsSupported",
-		"{ro,boot}(blob)0000000000000000");
-
 	/* Call our payload! */
 	debug("%s:%d Jumping to 0x%lx\n", __func__, __LINE__, (long)entry);
 
 	if (setjmp(&loaded_image_info.exit_jmp)) {
 		ret = loaded_image_info.exit_status;
+		EFI_EXIT(ret);
 		goto exit;
 	}
 
@@ -254,8 +197,7 @@ static efi_status_t do_bootefi_exec(void *efi, void *fdt,
 		dcache_disable();	/* flush cache before switch to EL2 */
 
 		/* Move into EL2 and keep running there */
-		armv8_switch_to_el2((ulong)entry,
-				    (ulong)&loaded_image_info_obj.handle,
+		armv8_switch_to_el2((ulong)entry, (ulong)&loaded_image_info,
 				    (ulong)&systab, 0, (ulong)efi_run_in_el2,
 				    ES_TO_AARCH64);
 
@@ -264,7 +206,7 @@ static efi_status_t do_bootefi_exec(void *efi, void *fdt,
 	}
 #endif
 
-	ret = efi_do_enter(loaded_image_info_obj.handle, &systab, entry);
+	ret = efi_do_enter(&loaded_image_info, &systab, entry);
 
 exit:
 	/* image has returned, loaded-image obj goes *poof*: */
@@ -273,99 +215,29 @@ exit:
 	return ret;
 }
 
-static int do_bootefi_bootmgr_exec(unsigned long fdt_addr)
-{
-	struct efi_device_path *device_path, *file_path;
-	void *addr;
-	efi_status_t r;
-
-	/* Initialize and populate EFI object list */
-	if (!efi_obj_list_initalized)
-		efi_init_obj_list();
-
-	/*
-	 * gd lives in a fixed register which may get clobbered while we execute
-	 * the payload. So save it here and restore it on every callback entry
-	 */
-	efi_save_gd();
-
-	addr = efi_bootmgr_load(&device_path, &file_path);
-	if (!addr)
-		return 1;
-
-	printf("## Starting EFI application at %p ...\n", addr);
-	r = do_bootefi_exec(addr, (void *)fdt_addr, device_path, file_path);
-	printf("## Application terminated, r = %lu\n",
-	       r & ~EFI_ERROR_MASK);
-
-	if (r != EFI_SUCCESS)
-		return 1;
-
-	return 0;
-}
 
 /* Interpreter command to boot an arbitrary EFI image from memory */
 static int do_bootefi(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
 {
 	char *saddr, *sfdt;
 	unsigned long addr, fdt_addr = 0;
-	efi_status_t r;
+	unsigned long r;
 
 	if (argc < 2)
 		return CMD_RET_USAGE;
 #ifdef CONFIG_CMD_BOOTEFI_HELLO
 	if (!strcmp(argv[1], "hello")) {
-		ulong size = __efi_helloworld_end - __efi_helloworld_begin;
+		ulong size = __efi_hello_world_end - __efi_hello_world_begin;
 
 		saddr = env_get("loadaddr");
 		if (saddr)
 			addr = simple_strtoul(saddr, NULL, 16);
 		else
 			addr = CONFIG_SYS_LOAD_ADDR;
-		memcpy((char *)addr, __efi_helloworld_begin, size);
+		memcpy((char *)addr, __efi_hello_world_begin, size);
 	} else
 #endif
-#ifdef CONFIG_CMD_BOOTEFI_SELFTEST
-	if (!strcmp(argv[1], "selftest")) {
-		struct efi_loaded_image loaded_image_info = {};
-		struct efi_object loaded_image_info_obj = {};
-
-		/* Construct a dummy device path. */
-		bootefi_device_path = efi_dp_from_mem(EFI_RESERVED_MEMORY_TYPE,
-						      (uintptr_t)&efi_selftest,
-						      (uintptr_t)&efi_selftest);
-		bootefi_image_path = efi_dp_from_file(NULL, 0, "\\selftest");
-
-		efi_setup_loaded_image(&loaded_image_info,
-				       &loaded_image_info_obj,
-				       bootefi_device_path, bootefi_image_path);
-		/*
-		 * gd lives in a fixed register which may get clobbered while we
-		 * execute the payload. So save it here and restore it on every
-		 * callback entry
-		 */
-		efi_save_gd();
-		/* Initialize and populate EFI object list */
-		if (!efi_obj_list_initalized)
-			efi_init_obj_list();
-		/* Transfer environment variable efi_selftest as load options */
-		set_load_options(&loaded_image_info, "efi_selftest");
-		/* Execute the test */
-		r = efi_selftest(loaded_image_info_obj.handle, &systab);
-		efi_restore_gd();
-		free(loaded_image_info.load_options);
-		list_del(&loaded_image_info_obj.link);
-		return r != EFI_SUCCESS;
-	} else
-#endif
-	if (!strcmp(argv[1], "bootmgr")) {
-		unsigned long fdt_addr = 0;
-
-		if (argc > 2)
-			fdt_addr = simple_strtoul(argv[2], NULL, 16);
-
-		return do_bootefi_bootmgr_exec(fdt_addr);
-	} else {
+	{
 		saddr = argv[1];
 
 		addr = simple_strtoul(saddr, NULL, 16);
@@ -395,20 +267,10 @@ static char bootefi_help_text[] =
 	"    If specified, the device tree located at <fdt address> gets\n"
 	"    exposed as EFI configuration table.\n"
 #ifdef CONFIG_CMD_BOOTEFI_HELLO
-	"bootefi hello\n"
-	"  - boot a sample Hello World application stored within U-Boot\n"
+	"hello\n"
+	"  - boot a sample Hello World application stored within U-Boot"
 #endif
-#ifdef CONFIG_CMD_BOOTEFI_SELFTEST
-	"bootefi selftest\n"
-	"  - boot an EFI selftest application stored within U-Boot\n"
-	"    Use environment variable efi_selftest to select a single test.\n"
-	"    Use 'setenv efi_selftest list' to enumerate all tests.\n"
-#endif
-	"bootmgr [fdt addr]\n"
-	"  - load and boot EFI payload based on BootOrder/BootXXXX variables.\n"
-	"\n"
-	"    If specified, the device tree located at <fdt address> gets\n"
-	"    exposed as EFI configuration table.\n";
+	;
 #endif
 
 U_BOOT_CMD(
@@ -437,8 +299,6 @@ void efi_set_bootdev(const char *dev, const char *devnr, const char *path)
 		int part;
 
 		desc = blk_get_dev(dev, simple_strtol(devnr, NULL, 10));
-		if (!desc)
-			return;
 		part = parse_partnum(devnr);
 
 		bootefi_device_path = efi_dp_from_part(desc, part);
@@ -447,9 +307,6 @@ void efi_set_bootdev(const char *dev, const char *devnr, const char *path)
 		bootefi_device_path = efi_dp_from_eth();
 #endif
 	}
-
-	if (!path)
-		return;
 
 	if (strcmp(dev, "Net")) {
 		/* Add leading / to fs paths, because they're absolute */
