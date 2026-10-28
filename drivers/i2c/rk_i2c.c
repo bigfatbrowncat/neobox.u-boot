@@ -148,6 +148,8 @@ static int rk_i2c_send_stop_bit(struct rk_i2c *i2c)
 
 static inline void rk_i2c_disable(struct rk_i2c *i2c)
 {
+	writel(0, &i2c->regs->ien);
+	writel(I2C_IPD_ALL_CLEAN, &i2c->regs->ipd);
 	writel(0, &i2c->regs->con);
 }
 
@@ -244,7 +246,6 @@ static int rk_i2c_read(struct rk_i2c *i2c, uchar chip, uint reg, uint r_len,
 	}
 
 i2c_exit:
-	rk_i2c_send_stop_bit(i2c);
 	rk_i2c_disable(i2c);
 
 	return err;
@@ -323,7 +324,6 @@ static int rk_i2c_write(struct rk_i2c *i2c, uchar chip, uint reg, uint r_len,
 	}
 
 i2c_exit:
-	rk_i2c_send_stop_bit(i2c);
 	rk_i2c_disable(i2c);
 
 	return err;
@@ -350,6 +350,9 @@ static int rockchip_i2c_xfer(struct udevice *bus, struct i2c_msg *msg,
 			return -EREMOTEIO;
 		}
 	}
+
+	rk_i2c_send_stop_bit(i2c);
+	rk_i2c_disable(i2c);
 
 	return 0;
 }
@@ -382,7 +385,7 @@ static int rockchip_i2c_probe(struct udevice *bus)
 {
 	struct rk_i2c *priv = dev_get_priv(bus);
 
-	priv->regs = (void *)devfdt_get_addr(bus);
+	priv->regs = dev_read_addr_ptr(bus);
 
 	return 0;
 }
@@ -396,7 +399,10 @@ static const struct udevice_id rockchip_i2c_ids[] = {
 	{ .compatible = "rockchip,rk3066-i2c" },
 	{ .compatible = "rockchip,rk3188-i2c" },
 	{ .compatible = "rockchip,rk3288-i2c" },
+	{ .compatible = "rockchip,rk3328-i2c" },
 	{ .compatible = "rockchip,rk3399-i2c" },
+	{ .compatible = "rockchip,rk3228-i2c" },
+	{ .compatible = "rockchip,rv1108-i2c" },
 	{ }
 };
 

@@ -127,10 +127,12 @@
 		compatible = "denx,u-boot-fdt-test";
 	};
 
-	clk_fixed: clk-fixed {
-		compatible = "fixed-clock";
-		#clock-cells = <0>;
-		clock-frequency = <1234>;
+	clocks {
+		clk_fixed: clk-fixed {
+			compatible = "fixed-clock";
+			#clock-cells = <0>;
+			clock-frequency = <1234>;
+		};
 	};
 
 	clk_sandbox: clk-sbox {
@@ -168,6 +170,28 @@
 		compatible = "sandbox,eth";
 		reg = <0x10004000 0x1000>;
 		fake-host-hwaddr = <0x00 0x00 0x66 0x44 0x22 0x22>;
+	};
+
+	firmware {
+		sandbox_firmware: sandbox-firmware {
+			compatible = "sandbox,firmware";
+		};
+
+		sandbox-scmi-agent@0 {
+			compatible = "sandbox,scmi-agent";
+			#address-cells = <1>;
+			#size-cells = <0>;
+		};
+
+		sandbox-scmi-agent@1 {
+			compatible = "sandbox,scmi-agent";
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			protocol@10 {
+				reg = <0x10>;
+			};
+		};
 	};
 
 	gpio_a: base-gpios {
@@ -271,6 +295,18 @@
 
 	mmc0 {
 		compatible = "sandbox,mmc";
+	};
+
+	nop-test_0 {
+		compatible = "sandbox,nop_sandbox1";
+		nop-test_1 {
+			compatible = "sandbox,nop_sandbox2";
+			bind = "True";
+		};
+		nop-test_2 {
+			compatible = "sandbox,nop_sandbox2";
+			bind = "False";
+		};
 	};
 
 	pci: pci-controller {

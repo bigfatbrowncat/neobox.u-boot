@@ -14,12 +14,13 @@
 
 #include <common.h>
 #include <command.h>
+#include <amp.h>
 #include <dm.h>
 #include <dm/root.h>
 #include <image.h>
 #include <u-boot/zlib.h>
 #include <asm/byteorder.h>
-#include <libfdt.h>
+#include <linux/libfdt.h>
 #include <mapmem.h>
 #include <fdt_support.h>
 #include <asm/bootm.h>
@@ -32,6 +33,7 @@
 #include <asm/armv7.h>
 #endif
 #include <asm/setup.h>
+#include <asm/arch/rockchip_smccc.h>
 
 DECLARE_GLOBAL_DATA_PTR;
 
@@ -64,10 +66,10 @@ void arch_lmb_reserve(struct lmb *lmb)
 	/* adjust sp by 4K to be safe */
 	sp -= 4096;
 	lmb_reserve(lmb, sp,
-		    gd->bd->bi_dram[0].start + gd->bd->bi_dram[0].size - sp);
+		    gd->ram_top - sp);
 }
 
-__weak void board_quiesce_devices(void)
+__weak void board_quiesce_devices(void *images)
 {
 }
 
@@ -76,8 +78,13 @@ __weak void board_quiesce_devices(void)
  *
  * @fake: non-zero to do everything except actually boot
  */
-static void announce_and_cleanup(int fake)
+static void announce_and_cleanup(bootm_headers_t *images, int fake)
 {
+	ulong us;
+
+	us = (get_ticks() - gd->sys_start_tick) / (COUNTER_FREQUENCY / 1000000);
+	printf("Total: %ld.%ld ms\n", us / 1000, us % 1000);
+
 	printf("\nStarting kernel ...%s\n\n", fake ?
 		"(fake run for tracing)" : "");
 	bootstage_mark_name(BOOTSTAGE_ID_BOOTM_HANDOFF, "start_kernel");
@@ -92,7 +99,10 @@ static void announce_and_cleanup(int fake)
 	udc_disconnect();
 #endif
 
-	board_quiesce_devices();
+	board_quiesce_devices(images);
+
+	/* Flush all console data */
+	flushc();
 
 	/*
 	 * Call remove function of all devices with a removal flag set.
@@ -308,6 +318,28 @@ static void switch_to_el1(void)
 #endif
 #endif
 
+#ifdef CONFIG_ARM64_SWITCH_TO_AARCH32
+int arm64_switch_aarch32(bootm_headers_t *images)
+{
+	int es_flag;
+	int ret = 0;
+
+	images->os.arch = IH_ARCH_ARM;
+
+	/* arm aarch32 SVC */
+	es_flag = PE_STATE(0, 0, 0, 0);
+	ret |= sip_smc_amp_cfg(AMP_PE_STATE, 0x100, es_flag);
+	ret |= sip_smc_amp_cfg(AMP_PE_STATE, 0x200, es_flag);
+	ret |= sip_smc_amp_cfg(AMP_PE_STATE, 0x300, es_flag);
+	if (ret) {
+		printf("ARM64 switch aarch32 SiP call failed, ret=%d\n", ret);
+		return 0;
+	}
+
+	return es_flag;
+}
+#endif
+
 /* Subcommand: GO */
 static void boot_jump_linux(bootm_headers_t *images, int flag)
 {
@@ -315,7 +347,13 @@ static void boot_jump_linux(bootm_headers_t *images, int flag)
 	void (*kernel_entry)(void *fdt_addr, void *res0, void *res1,
 			void *res2);
 	int fake = (flag & BOOTM_STATE_OS_FAKE_GO);
+	int es_flag = 0;
 
+#if defined(CONFIG_AMP)
+	es_flag = arm64_switch_amp_pe(images);
+#elif defined(CONFIG_ARM64_SWITCH_TO_AARCH32)
+	es_flag = arm64_switch_aarch32(images);
+#endif
 	kernel_entry = (void (*)(void *fdt_addr, void *res0, void *res1,
 				void *res2))images->ep;
 
@@ -323,7 +361,7 @@ static void boot_jump_linux(bootm_headers_t *images, int flag)
 		(ulong) kernel_entry);
 	bootstage_mark(BOOTSTAGE_ID_RUN_OS);
 
-	announce_and_cleanup(fake);
+	announce_and_cleanup(images, fake);
 
 	if (!fake) {
 #ifdef CONFIG_ARMV8_PSCI
@@ -340,11 +378,11 @@ static void boot_jump_linux(bootm_headers_t *images, int flag)
 		if ((IH_ARCH_DEFAULT == IH_ARCH_ARM64) &&
 		    (images->os.arch == IH_ARCH_ARM))
 			armv8_switch_to_el2(0, (u64)gd->bd->bi_arch_number,
-					    (u64)images->ft_addr, 0,
+					    (u64)images->ft_addr, es_flag,
 					    (u64)images->ep,
 					    ES_TO_AARCH32);
 		else
-			armv8_switch_to_el2((u64)images->ft_addr, 0, 0, 0,
+			armv8_switch_to_el2((u64)images->ft_addr, 0, 0, es_flag,
 					    images->ep,
 					    ES_TO_AARCH64);
 #endif
@@ -373,7 +411,7 @@ static void boot_jump_linux(bootm_headers_t *images, int flag)
 	debug("## Transferring control to Linux (at address %08lx)" \
 		"...\n", (ulong) kernel_entry);
 	bootstage_mark(BOOTSTAGE_ID_RUN_OS);
-	announce_and_cleanup(fake);
+	announce_and_cleanup(images, fake);
 
 	if (IMAGE_ENABLE_OF_LIBFDT && images->ft_len)
 		r2 = (unsigned long)images->ft_addr;

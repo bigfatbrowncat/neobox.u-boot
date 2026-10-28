@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 
 # Copyright (c) 2016 Google, Inc
 # Written by Simon Glass <sjg@chromium.org>
@@ -21,7 +21,7 @@ for dirname in ['../patman', '../dtoc', '..']:
     sys.path.insert(0, os.path.join(our_path, dirname))
 
 # Bring in the libfdt module
-sys.path.insert(0, 'tools')
+sys.path.insert(0, 'scripts/dtc/pylibfdt')
 
 # Also allow entry-type modules to be brought in from the etype directory.
 sys.path.insert(0, os.path.join(our_path, 'etype'))
