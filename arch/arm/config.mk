@@ -13,12 +13,18 @@ CONFIG_STANDALONE_LOAD_ADDR = 0xc100000
 endif
 endif
 
-CFLAGS_NON_EFI := -fno-pic -ffixed-r9 -ffunction-sections -fdata-sections
+CFLAGS_NON_EFI := -fno-pic -ffunction-sections -fdata-sections
 CFLAGS_EFI := -fpic -fshort-wchar
 
 LDFLAGS_FINAL += --gc-sections
 PLATFORM_RELFLAGS += -ffunction-sections -fdata-sections \
-		     -fno-common -ffixed-r9
+		     -fno-common
+ifndef CONFIG_ARM64
+# r9 is the reserved register on arm32; on arm64 x18 (shadow call stack)
+# is reserved instead (see cpu/armv8/config.mk).
+CFLAGS_NON_EFI += -ffixed-r9
+PLATFORM_RELFLAGS += -ffixed-r9
+endif
 PLATFORM_RELFLAGS += $(call cc-option, -msoft-float) \
       $(call cc-option,-mshort-load-bytes,$(call cc-option,-malignment-traps,))
 
