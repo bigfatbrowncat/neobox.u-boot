@@ -158,5 +158,6 @@ SECTIONS
 	/DISCARD/ : { *(.dynamic*) }
 	/DISCARD/ : { *(.plt*) }
 	/DISCARD/ : { *(.interp*) }
+	/DISCARD/ : { *(.hash) }
 	/DISCARD/ : { *(.gnu*) }
 }

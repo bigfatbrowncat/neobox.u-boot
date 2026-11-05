@@ -827,6 +827,12 @@ LDFLAGS_u-boot += $(LDFLAGS_FINAL)
 # Avoid 'Not enough room for program headers' error on binutils 2.28 onwards.
 LDFLAGS_u-boot += $(call ld-option, --no-dynamic-linker)
 
+# lld: for this no-pic fixed-base PIE we must emit R_AARCH64_RELATIVE
+# (relocate_code fixes them up at runtime). -export-dynamic stops lld
+# folding them as link-time constants, -z notext lets it emit them for the
+# absolute data refs in .text.
+LDFLAGS_u-boot += -export-dynamic -z notext
+
 ifneq ($(CONFIG_SYS_TEXT_BASE),)
 LDFLAGS_u-boot += -Ttext $(CONFIG_SYS_TEXT_BASE)
 endif
